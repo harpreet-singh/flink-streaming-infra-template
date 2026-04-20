@@ -1,0 +1,95 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ include "flink-stream-app.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "flink-stream-app.fullname" . }}
+    app.kubernetes.io/part-of: flink-streaming-template
+spec:
+  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  flinkVersion: {{ .Values.flink.version }}
+  serviceAccount: {{ .Values.flink.serviceAccount }}
+  mode: native
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "{{ .Values.taskManager.slots }}"
+    state.checkpoints.dir: {{ .Values.state.checkpointsDir | quote }}
+    state.savepoints.dir: {{ .Values.state.savepointsDir | quote }}
+    high-availability.storageDir: {{ .Values.state.haStorageDir | quote }}
+    s3.endpoint: {{ .Values.objectStorage.endpoint | quote }}
+    s3.path.style.access: {{ ternary "true" "false" .Values.objectStorage.pathStyleAccess | quote }}
+    kubernetes.operator.job.autoscaler.enabled: {{ ternary "true" "false" .Values.autoscaler.enabled | quote }}
+    kubernetes.operator.job.autoscaler.target.utilization: {{ .Values.autoscaler.targetUtilization | quote }}
+    kubernetes.operator.job.autoscaler.metrics.window: {{ .Values.autoscaler.metricsWindow | quote }}
+    kubernetes.operator.job.autoscaler.stabilization.interval: {{ .Values.autoscaler.stabilizationInterval | quote }}
+    kubernetes.operator.job.autoscaler.scale-up.max-factor: {{ .Values.autoscaler.maxScaleUpFactor | quote }}
+    kubernetes.operator.job.autoscaler.scale-down.max-factor: {{ .Values.autoscaler.maxScaleDownFactor | quote }}
+    kubernetes.operator.job.autoscaler.vertex.min-parallelism: "{{ .Values.autoscaler.minParallelism }}"
+    kubernetes.operator.job.autoscaler.vertex.max-parallelism: "{{ .Values.autoscaler.maxParallelism }}"
+{{- range $key, $value := .Values.flink.configuration }}
+    {{ $key }}: {{ $value | quote }}
+{{- end }}
+  logConfiguration:
+    log4j-console.properties: |
+      rootLogger.level = {{ .Values.flink.logConfiguration.rootLoggerLevel }}
+      rootLogger.appenderRef.console.ref = ConsoleAppender
+      appender.console.name = ConsoleAppender
+      appender.console.type = CONSOLE
+      appender.console.layout.type = PatternLayout
+      appender.console.layout.pattern = %d{ISO8601} %-5p [%t] %c{1} - %m%n
+  podTemplate:
+    metadata:
+      annotations:
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- else }}
+        {}
+{{- end }}
+      labels:
+{{- if .Values.podLabels }}
+{{ toYaml .Values.podLabels | indent 8 }}
+{{- else }}
+        {}
+{{- end }}
+    spec:
+      containers:
+        - name: flink-main-container
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_INPUT_TOPIC
+              value: {{ .Values.kafka.inputTopic | quote }}
+            - name: KAFKA_CONSUMER_GROUP
+              value: {{ .Values.kafka.consumerGroup | quote }}
+            - name: PAIMON_CATALOG
+              value: {{ .Values.paimon.catalogName | quote }}
+            - name: PAIMON_WAREHOUSE
+              value: {{ .Values.paimon.warehouse | quote }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.objectStorage.accessKeySecret.name }}
+                  key: {{ .Values.objectStorage.accessKeySecret.accessKeyKey }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.objectStorage.accessKeySecret.name }}
+                  key: {{ .Values.objectStorage.accessKeySecret.secretKeyKey }}
+  jobManager:
+    resource:
+      cpu: {{ .Values.jobManager.cpu }}
+      memory: {{ .Values.jobManager.memory | quote }}
+  taskManager:
+    replicas: {{ .Values.taskManager.replicas }}
+    resource:
+      cpu: {{ .Values.taskManager.cpu }}
+      memory: {{ .Values.taskManager.memory | quote }}
+  job:
+    jarURI: {{ .Values.job.jarURI | quote }}
+    entryClass: {{ .Values.job.entryClass | quote }}
+    args:
+{{ toYaml .Values.job.args | indent 6 }}
+    parallelism: {{ .Values.job.parallelism }}
+    upgradeMode: {{ .Values.job.upgradeMode }}
+    state: {{ .Values.job.state }}
