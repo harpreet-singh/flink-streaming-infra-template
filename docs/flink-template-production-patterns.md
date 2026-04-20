@@ -49,7 +49,6 @@ Recommendations for production deployments:
 - enable JobManager HA metadata in object storage
 - run workloads across multi-AZ node pools when the cluster spans zones
 - add pod anti-affinity for JobManager and TaskManagers where cluster size permits
-- set `PodDisruptionBudget` policies for the operator and the most critical streaming jobs
 - validate network throughput and object-store latency assumptions before broad rollout
 
 ## Secrets And Configuration
